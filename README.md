@@ -98,9 +98,9 @@ WearAndShare es una aplicación móvil revolucionaria de moda que permite a los 
 
 ### Flujo de uso recomendado
 
-- En la zona del ropero virtual (icono de camiseta en el menu) ingresar la imagen adjuntada (boton celeste Add Photo) para que se agreguen las prendas al ropero. Comprobar que el modelo devolvio bien el tipo de prenda ya que en caso de que el tipo de prenda este marcado incorrectamente, esto complicaria su uso. Si la carga no es exitosa, volver a intentar o seguir en el proximo paso con las prendas ya cargadas.
+- En la zona del ropero virtual (icono de camiseta en el menu) ingresar la imagen adjuntada (outfit.jpeg) tocando el boton 'Add Photo' para que se agreguen las prendas al ropero. Comprobar que el modelo devolvio bien el tipo de prenda ya que en caso de que el tipo de prenda este marcado incorrectamente, esto complicaria su uso. Si la carga no es exitosa, volver a intentar o seguir en el proximo paso con las prendas ya cargadas.
 - Seguiendo, presionar el boton 'Create Outfit' para crear un outfit con las prendas deseadas. Tener en cuenta que para crear un outfit se necesita de 1 top, 1 bottom y 1 shoe. Ya hay prendas cargadas que lo permiten hacer. Guardar.
-- Luego ir a la seccion de 'Saved Outfits' para probar el nuevo outfit. Cuando se haya elegido el outfit a probar, se debe presionar el boton de 'Try On'. Para esta prueba tambien adjuntamos una imagen pero son libres de probarlo en ustedes mismos o con la imagen que quieran..
+- Luego ir a la seccion de 'Saved Outfits' para probar el nuevo outfit. Cuando se haya elegido el outfit a probar, se debe presionar el boton de 'Try On'. Para esta prueba tambien adjuntamos una imagen (persona.jpeg) pero son libres de probarlo en ustedes mismos o con la imagen que quieran..
 - Una vez probado el outfit, crear una publicacion con el boton '+' en el centro del menu.
 
 ## 🛠️ Desarrollo
