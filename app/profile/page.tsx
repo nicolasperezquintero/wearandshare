@@ -1,88 +1,90 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import { BottomNav } from "@/components/bottom-nav"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Share2, Shirt } from "lucide-react"
-import { supabase } from "@/lib/supabaseClient"
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { BottomNav } from "@/components/bottom-nav";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Share2, Shirt } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 interface UserData {
-  username: string
-  name: string
-  created_at: string
+  username: string;
+  name: string;
+  created_at: string;
 }
 
 interface Post {
-  id: number
-  outfit_id: string
-  description: string
-  likes: number
-  created_at: string
-  image?: string
+  id: number;
+  outfit_id: string;
+  description: string;
+  likes: number;
+  created_at: string;
+  image?: string;
 }
 
 interface Outfit {
-  id: string
-  name: string
-  username: string
-  created_at: string
-  image?: string
+  id: string;
+  name: string;
+  username: string;
+  created_at: string;
+  image?: string;
 }
 
 export default function Profile() {
-  const [activeTab, setActiveTab] = useState<"posts">("posts")
-  const [user, setUser] = useState<UserData | null>(null)
-  const [posts, setPosts] = useState<Post[]>([])
-  const [outfits, setOutfits] = useState<Outfit[]>([])
-  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<"posts">("posts");
+  const [user, setUser] = useState<UserData | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [outfits, setOutfits] = useState<Outfit[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const currentUsername = "nicoperez"
+  const currentUsername = "nicoperez";
 
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        setLoading(true)
+        setLoading(true);
 
         // Fetch user info
         const { data: userData, error: userError } = await supabase
           .from("users")
           .select("*")
           .eq("username", currentUsername)
-          .single()
+          .single();
 
-        if (userError) throw userError
-        setUser(userData)
+        if (userError) throw userError;
+        setUser(userData);
 
         // Fetch user's posts
         const { data: postsData, error: postsError } = await supabase
           .from("posts")
-          .select(`
+          .select(
+            `
             *,
-            outfits(username)
-          `)
+            outfits!inner(username)
+          `
+          )
           .eq("outfits.username", currentUsername)
-          .order("created_at", { ascending: false })
+          .order("created_at", { ascending: false });
 
-        if (postsError) throw postsError
+        if (postsError) throw postsError;
 
         // Add image URLs to posts
         const postsWithImages = (postsData || []).map((post) => ({
           ...post,
           image: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/posts/${post.id}/main.jpg`,
-        }))
+        }));
 
-        setPosts(postsWithImages)
+        setPosts(postsWithImages);
 
         // Fetch user's outfits
         const { data: outfitsData, error: outfitsError } = await supabase
           .from("outfits")
           .select("*")
           .eq("username", currentUsername)
-          .order("created_at", { ascending: false })
+          .order("created_at", { ascending: false });
 
-        if (outfitsError) throw outfitsError
+        if (outfitsError) throw outfitsError;
 
         // Add image URLs to outfits (try to get post image for each outfit)
         const outfitsWithImages = await Promise.all(
@@ -92,45 +94,45 @@ export default function Profile() {
               .select("id")
               .eq("outfit_id", outfit.id)
               .limit(1)
-              .single()
+              .single();
 
             const imageUrl = postData
               ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/posts/${postData.id}/main.jpg`
-              : "/placeholder.svg"
+              : "/placeholder.svg";
 
             return {
               ...outfit,
               image: imageUrl,
-            }
-          }),
-        )
+            };
+          })
+        );
 
-        setOutfits(outfitsWithImages)
+        setOutfits(outfitsWithImages);
       } catch (error) {
-        console.error("Error fetching user data:", error)
+        console.error("Error fetching user data:", error);
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    fetchUserData()
-  }, [])
+    fetchUserData();
+  }, []);
 
   const formatNumber = (count: number) => {
     if (count >= 1000000) {
-      return `${(count / 1000000).toFixed(1)}M`
+      return `${(count / 1000000).toFixed(1)}M`;
     } else if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K`
+      return `${(count / 1000).toFixed(1)}K`;
     }
-    return count.toString()
-  }
+    return count.toString();
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-background pb-24 flex items-center justify-center">
         <p className="text-muted-foreground">Cargando perfil...</p>
       </div>
-    )
+    );
   }
 
   if (!user) {
@@ -138,7 +140,7 @@ export default function Profile() {
       <div className="min-h-screen bg-background pb-24 flex items-center justify-center">
         <p className="text-muted-foreground">Usuario no encontrado</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -159,7 +161,9 @@ export default function Profile() {
       <section className="px-6 pt-6 text-center space-y-4">
         <div className="flex justify-center">
           <Avatar className="w-24 h-24">
-            <AvatarFallback className="text-3xl">{user.name?.[0] || user.username[0].toUpperCase()}</AvatarFallback>
+            <AvatarFallback className="text-3xl">
+              {user.name?.[0] || user.username[0].toUpperCase()}
+            </AvatarFallback>
           </Avatar>
         </div>
 
@@ -182,7 +186,9 @@ export default function Profile() {
         <button
           onClick={() => setActiveTab("posts")}
           className={`py-2 text-sm font-medium ${
-            activeTab === "posts" ? "text-foreground border-b-2 border-foreground" : "text-muted-foreground"
+            activeTab === "posts"
+              ? "text-foreground border-b-2 border-foreground"
+              : "text-muted-foreground"
           }`}
         >
           Publicaciones
@@ -222,5 +228,5 @@ export default function Profile() {
       {/* Bottom Navigation */}
       <BottomNav />
     </div>
-  )
+  );
 }
