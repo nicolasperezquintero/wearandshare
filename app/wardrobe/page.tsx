@@ -845,7 +845,9 @@ export default function Wardrobe() {
           description: item.description || "",
         }));
       }
-    } catch (e) {}
+    } catch (e) {
+      // Ignore parsing errors and continue with fallback logic
+    }
 
     const lines = textOutput.split("\n").filter((line) => line.trim());
     for (const line of lines) {
