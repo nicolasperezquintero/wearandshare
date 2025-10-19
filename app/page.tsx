@@ -1,7 +1,7 @@
-import { Header } from "@/components/header";
-import { OutfitCard } from "@/components/outfit-card";
-import { BottomNav } from "@/components/bottom-nav";
-import { supabase } from "@/lib/supabaseClient";
+import { Header } from "@/components/header"
+import { OutfitCard } from "@/components/outfit-card"
+import { BottomNav } from "@/components/bottom-nav"
+import { supabase } from "@/lib/supabaseClient"
 
 // const outfits = [
 //   {
@@ -52,27 +52,43 @@ import { supabase } from "@/lib/supabaseClient";
 // ];
 
 export default async function Home() {
-  const { data: posts } = await supabase
+  const { data: posts, error } = await supabase
     .from("posts")
-    .select(
-      "*, outfits(id, username,outfits_clothes(id, clothes(id, name, type))) "
-    );
+    .select(`
+      *,
+      outfits (
+        id,
+        name,
+        username,
+        created_at,
+        outfits_clothes (
+          id,
+          clothes (
+            id,
+            name,
+            type,
+            sponsored,
+            sponsor_link
+          )
+        )
+      )
+    `)
+    .order("created_at", { ascending: false })
 
-  console.log(posts);
+  console.log("[v0] Posts query error:", error)
+  console.log("[v0] Posts data:", JSON.stringify(posts, null, 2))
 
   // Fetch gallery data for each post
   const postsWithGallery = await Promise.all(
     (posts || []).map(async (post) => {
-      const { data: gallery } = await supabase.storage
-        .from("posts")
-        .list(post.id.toString(), {
-          limit: 100,
-          offset: 0,
-          sortBy: { column: "name", order: "asc" },
-        });
-      return { ...post, gallery: gallery || [] };
-    })
-  );
+      const { data: gallery } = await supabase.storage.from("posts").list(post.id.toString(), {
+        limit: 100,
+        offset: 0,
+        sortBy: { column: "name", order: "asc" },
+      })
+      return { ...post, gallery: gallery || [] }
+    }),
+  )
 
   return (
     <div className="relative min-h-screen bg-background pb-20">
@@ -84,5 +100,5 @@ export default async function Home() {
       </div>
       <BottomNav />
     </div>
-  );
+  )
 }

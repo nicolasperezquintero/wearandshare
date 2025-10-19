@@ -73,7 +73,7 @@ export default function CreatePostPage() {
   }, [])
 
   const handleNewOutfit = () => {
-    router.push("/create-outfit")
+    router.push("/wardrobe?mode=create")
   }
 
   const handleContinue = (outfitId: string) => {
@@ -94,12 +94,15 @@ export default function CreatePostPage() {
 
   return (
     <div className="min-h-screen bg-background pb-24 px-6 pt-6">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-semibold">Crear publicación</h1>
-        <Button onClick={handleNewOutfit} size="icon" variant="outline" className="rounded-full bg-transparent">
-          <Plus className="h-5 w-5" />
+        <Button onClick={handleNewOutfit} size="sm" className="rounded-full gap-2">
+          <Plus className="h-4 w-4" />
+          Nuevo Outfit
         </Button>
       </div>
+
+      <p className="text-muted-foreground mb-6">Tus Outfits</p>
 
       {outfits.length === 0 ? (
         <div className="text-center py-12">

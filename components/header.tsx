@@ -1,17 +1,10 @@
-import Image from "next/image"
-
 export const Header = () => {
   return (
-    <header className="w-full flex items-center justify-center px-4 py-3 bg-background border-b border-border">
+    <header className="w-full flex items-start justify-start px-4 py-4 bg-background border-b border-border sticky top-0 z-50 backdrop-blur-sm bg-background/95">
       <div className="flex items-center gap-2">
-        <Image
-          src="/images/logo-ltk.png"
-          alt="App Logo"
-          width={32}
-          height={32}
-          className="object-contain"
-        />
-        <span className="text-lg font-bold tracking-tight">Fittly</span>
+        <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+          wearandshare
+        </span>
       </div>
     </header>
   )

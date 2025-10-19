@@ -1,27 +1,145 @@
 "use client"
 
-import Image from "next/image"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import Link from "next/link"
 import { BottomNav } from "@/components/bottom-nav"
 import { Button } from "@/components/ui/button"
-import { User, Settings, Share2 } from "lucide-react"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Share2, Shirt } from "lucide-react"
+import { supabase } from "@/lib/supabaseClient"
 
-const mockUser = {
-  username: "fittly_user",
-  avatar: "/images/avatar-placeholder.png",
-  followers: 1280,
-  following: 563,
-  posts: [
-    { id: 1, image: "/images/outfit1.jpg" },
-    { id: 2, image: "/images/outfit2.jpg" },
-    { id: 3, image: "/images/outfit3.jpg" },
-    { id: 4, image: "/images/outfit4.jpg" },
-    { id: 5, image: "/images/outfit1.jpg" },
-  ],
+interface UserData {
+  username: string
+  name: string
+  created_at: string
+}
+
+interface Post {
+  id: number
+  outfit_id: string
+  description: string
+  likes: number
+  created_at: string
+  image?: string
+}
+
+interface Outfit {
+  id: string
+  name: string
+  username: string
+  created_at: string
+  image?: string
 }
 
 export default function Profile() {
-  const [activeTab, setActiveTab] = useState<"posts" | "likes" | "clothes">("posts")
+  const [activeTab, setActiveTab] = useState<"posts">("posts")
+  const [user, setUser] = useState<UserData | null>(null)
+  const [posts, setPosts] = useState<Post[]>([])
+  const [outfits, setOutfits] = useState<Outfit[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const currentUsername = "nicoperez"
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        setLoading(true)
+
+        // Fetch user info
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("username", currentUsername)
+          .single()
+
+        if (userError) throw userError
+        setUser(userData)
+
+        // Fetch user's posts
+        const { data: postsData, error: postsError } = await supabase
+          .from("posts")
+          .select(`
+            *,
+            outfits(username)
+          `)
+          .eq("outfits.username", currentUsername)
+          .order("created_at", { ascending: false })
+
+        if (postsError) throw postsError
+
+        // Add image URLs to posts
+        const postsWithImages = (postsData || []).map((post) => ({
+          ...post,
+          image: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/posts/${post.id}/main.jpg`,
+        }))
+
+        setPosts(postsWithImages)
+
+        // Fetch user's outfits
+        const { data: outfitsData, error: outfitsError } = await supabase
+          .from("outfits")
+          .select("*")
+          .eq("username", currentUsername)
+          .order("created_at", { ascending: false })
+
+        if (outfitsError) throw outfitsError
+
+        // Add image URLs to outfits (try to get post image for each outfit)
+        const outfitsWithImages = await Promise.all(
+          (outfitsData || []).map(async (outfit) => {
+            const { data: postData } = await supabase
+              .from("posts")
+              .select("id")
+              .eq("outfit_id", outfit.id)
+              .limit(1)
+              .single()
+
+            const imageUrl = postData
+              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/posts/${postData.id}/main.jpg`
+              : "/placeholder.svg"
+
+            return {
+              ...outfit,
+              image: imageUrl,
+            }
+          }),
+        )
+
+        setOutfits(outfitsWithImages)
+      } catch (error) {
+        console.error("Error fetching user data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUserData()
+  }, [])
+
+  const formatNumber = (count: number) => {
+    if (count >= 1000000) {
+      return `${(count / 1000000).toFixed(1)}M`
+    } else if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}K`
+    }
+    return count.toString()
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background pb-24 flex items-center justify-center">
+        <p className="text-muted-foreground">Cargando perfil...</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background pb-24 flex items-center justify-center">
+        <p className="text-muted-foreground">Usuario no encontrado</p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -33,9 +151,6 @@ export default function Profile() {
             <Button variant="ghost" size="icon">
               <Share2 className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon">
-              <Settings className="h-5 w-5" />
-            </Button>
           </div>
         </div>
       </header>
@@ -43,38 +158,22 @@ export default function Profile() {
       {/* User Info */}
       <section className="px-6 pt-6 text-center space-y-4">
         <div className="flex justify-center">
-          <div className="relative w-24 h-24 rounded-full overflow-hidden bg-secondary">
-            <Image
-              src={mockUser.avatar}
-              alt="User avatar"
-              fill
-              className="object-cover"
-            />
-          </div>
+          <Avatar className="w-24 h-24">
+            <AvatarFallback className="text-3xl">{user.name?.[0] || user.username[0].toUpperCase()}</AvatarFallback>
+          </Avatar>
         </div>
 
-        <h2 className="text-xl font-semibold">{mockUser.username}</h2>
+        <div>
+          <h2 className="text-xl font-semibold">@{user.username}</h2>
+          {user.name && <p className="text-muted-foreground">{user.name}</p>}
+        </div>
 
-        {/* Followers / Following */}
+        {/* Stats */}
         <div className="flex justify-center gap-8 text-sm">
           <div className="text-center">
-            <p className="font-bold">{mockUser.followers}</p>
-            <p className="text-muted-foreground">Seguidores</p>
+            <p className="font-bold">{formatNumber(posts.length)}</p>
+            <p className="text-muted-foreground">Publicaciones</p>
           </div>
-          <div className="text-center">
-            <p className="font-bold">{mockUser.following}</p>
-            <p className="text-muted-foreground">Seguidos</p>
-          </div>
-        </div>
-
-        {/* Add friends / edit buttons */}
-        <div className="flex justify-center gap-3 pt-2">
-          <Button variant="outline" size="sm" className="rounded-full">
-            Editar perfil
-          </Button>
-          <Button size="sm" className="rounded-full">
-            Añadir amigos
-          </Button>
         </div>
       </section>
 
@@ -88,51 +187,35 @@ export default function Profile() {
         >
           Publicaciones
         </button>
-        <button
-          onClick={() => setActiveTab("likes")}
-          className={`py-2 text-sm font-medium ${
-            activeTab === "likes" ? "text-foreground border-b-2 border-foreground" : "text-muted-foreground"
-          }`}
-        >
-          Likes
-        </button>
-        <button
-          onClick={() => setActiveTab("clothes")}
-          className={`py-2 text-sm font-medium ${
-            activeTab === "clothes" ? "text-foreground border-b-2 border-foreground" : "text-muted-foreground"
-          }`}
-        >
-          Prendas guardadas
-        </button>
       </div>
 
       {/* Tab Content */}
       <section className="px-2 mt-4">
         {activeTab === "posts" && (
-          <div className="grid grid-cols-3 gap-1">
-            {mockUser.posts.map((post) => (
-              <div key={post.id} className="aspect-square relative">
-                <Image
-                  src={post.image}
-                  alt="User post"
-                  fill
-                  className="object-cover"
-                />
+          <>
+            {posts.length > 0 ? (
+              <div className="grid grid-cols-3 gap-1">
+                {posts.map((post) => (
+                  <Link
+                    key={post.id}
+                    href={`/post/${post.id}`}
+                    className="aspect-square relative overflow-hidden rounded-sm"
+                  >
+                    <img
+                      src={post.image || "/placeholder.svg"}
+                      alt={post.description || "Post"}
+                      className="w-full h-full object-cover"
+                    />
+                  </Link>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-
-        {activeTab === "likes" && (
-          <div className="text-center text-muted-foreground mt-10">
-            Tus likes aparecerán aquí ❤️
-          </div>
-        )}
-
-        {activeTab === "clothes" && (
-          <div className="text-center text-muted-foreground mt-10">
-            Tus prendas guardadas aparecerán aquí 👗
-          </div>
+            ) : (
+              <div className="text-center text-muted-foreground mt-10 flex flex-col items-center">
+                <Shirt className="h-12 w-12 mb-4" />
+                <p>No hay publicaciones todavía</p>
+              </div>
+            )}
+          </>
         )}
       </section>
 

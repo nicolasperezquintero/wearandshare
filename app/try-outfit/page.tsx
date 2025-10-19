@@ -79,7 +79,50 @@ export default function TryOutfit() {
     }
   }
 
-  const capturePhoto = () => {
+  const resizeImage = async (dataUrl: string, maxDimension = 1024): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        let { width, height } = img
+
+        // Only resize if image exceeds max dimension
+        if (width <= maxDimension && height <= maxDimension) {
+          resolve(dataUrl)
+          return
+        }
+
+        // Calculate new dimensions while maintaining aspect ratio
+        if (width > height) {
+          if (width > maxDimension) {
+            height = (height * maxDimension) / width
+            width = maxDimension
+          }
+        } else {
+          if (height > maxDimension) {
+            width = (width * maxDimension) / height
+            height = maxDimension
+          }
+        }
+
+        // Create canvas and resize
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext("2d")
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height)
+          // Compress to JPEG with 0.85 quality
+          resolve(canvas.toDataURL("image/jpeg", 0.85))
+        } else {
+          resolve(dataUrl)
+        }
+      }
+      img.onerror = () => resolve(dataUrl)
+      img.src = dataUrl
+    })
+  }
+
+  const capturePhoto = async () => {
     if (videoRef.current) {
       const canvas = document.createElement("canvas")
       canvas.width = videoRef.current.videoWidth
@@ -88,18 +131,21 @@ export default function TryOutfit() {
       if (ctx) {
         ctx.drawImage(videoRef.current, 0, 0)
         const imageData = canvas.toDataURL("image/jpeg")
-        setCapturedImage(imageData)
+        const resized = await resizeImage(imageData)
+        setCapturedImage(resized)
         stopCamera()
       }
     }
   }
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       const reader = new FileReader()
-      reader.onload = (e) => {
-        setCapturedImage(e.target?.result as string)
+      reader.onload = async (e) => {
+        const dataUrl = e.target?.result as string
+        const resized = await resizeImage(dataUrl)
+        setCapturedImage(resized)
       }
       reader.readAsDataURL(file)
     }

@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import type React from "react"
+
+import { useState, useEffect, useRef } from "react"
 import { BottomNav } from "@/components/bottom-nav"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,10 +25,19 @@ import {
   Check,
   X,
   Save,
+  Trash2,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { supabase } from "@/lib/supabaseClient"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { uploadClothesImage } from "@/app/actions/upload-clothes-images"
 
 interface ClothingItem {
   id: string
@@ -46,6 +57,13 @@ interface SavedOutfit {
   image: string
   items: ClothingItem[]
   createdAt: Date
+}
+
+interface ExtractedItem {
+  name: string
+  type: string
+  description: string
+  imageBase64: string
 }
 
 const mockClothingItems: ClothingItem[] = [
@@ -169,6 +187,46 @@ export default function Wardrobe() {
       color: "bg-green-500",
     },
   ]
+
+  const [isExtracting, setIsExtracting] = useState(false)
+  const addPhotoInputRef = useRef<HTMLInputElement>(null)
+
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean
+    title: string
+    message: string
+    onConfirm: () => void
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  })
+
+  const [messageModal, setMessageModal] = useState<{
+    isOpen: boolean
+    title: string
+    message: string
+    type: "success" | "error"
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "success",
+  })
+
+  const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([])
+  const [showExtractedItemsDialog, setShowExtractedItemsDialog] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const mode = params.get("mode")
+      if (mode === "create") {
+        setCreateOutfitMode(true)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     fetchClothes()
@@ -381,13 +439,67 @@ export default function Wardrobe() {
     }
   }
 
+  const handleDeleteItem = async (itemId: string) => {
+    const item = clothingItems.find((i) => i.id === itemId)
+    if (!item) return
+
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Item",
+      message: `Are you sure you want to delete "${item.name}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          const { error: storageError } = await supabase.storage.from("clothes").remove([`${itemId}/main.jpg`])
+
+          if (storageError) {
+            console.error("Error deleting image from storage:", storageError)
+          }
+
+          const { error: dbError } = await supabase.from("clothes").delete().eq("id", Number.parseInt(itemId))
+
+          if (dbError) {
+            console.error("Error deleting from database:", dbError)
+            setMessageModal({
+              isOpen: true,
+              title: "Error",
+              message: "Failed to delete item. Please try again.",
+              type: "error",
+            })
+            return
+          }
+
+          setClothingItems((prev) => prev.filter((i) => i.id !== itemId))
+          setMessageModal({
+            isOpen: true,
+            title: "Success",
+            message: "Item deleted successfully!",
+            type: "success",
+          })
+        } catch (error) {
+          console.error("Error deleting item:", error)
+          setMessageModal({
+            isOpen: true,
+            title: "Error",
+            message: "Failed to delete item. Please try again.",
+            type: "error",
+          })
+        }
+      },
+    })
+  }
+
   const canCreateOutfit = () => {
     return selectedItems.tops.length === 1 && selectedItems.bottoms.length === 1 && selectedItems.shoes.length === 1
   }
 
   const handleSaveOutfit = async () => {
     if (!outfitName.trim()) {
-      alert("Please enter an outfit name")
+      setMessageModal({
+        isOpen: true,
+        title: "Missing Information",
+        message: "Please enter an outfit name",
+        type: "error",
+      })
       return
     }
 
@@ -397,7 +509,7 @@ export default function Wardrobe() {
       const { data: outfitData, error: outfitError } = await supabase
         .from("outfits")
         .insert({
-          username: "nicoperez", // TODO: Get from auth
+          username: "nicoperez",
           name: outfitName,
         })
         .select()
@@ -432,13 +544,272 @@ export default function Wardrobe() {
       })
 
       fetchSavedOutfits()
-      alert("Outfit saved successfully!")
+      setMessageModal({
+        isOpen: true,
+        title: "Success",
+        message: "Outfit saved successfully!",
+        type: "success",
+      })
     } catch (error) {
       console.error("Error saving outfit:", error)
-      alert("Failed to save outfit. Please try again.")
+      setMessageModal({
+        isOpen: true,
+        title: "Error",
+        message: "Failed to save outfit. Please try again.",
+        type: "error",
+      })
     } finally {
       setIsSaving(false)
     }
+  }
+
+  const handleAddPhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      setIsExtracting(true)
+
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        try {
+          const dataUrl = e.target?.result as string
+          const resized = await resizeImage(dataUrl)
+          const base64 = resized.split(",")[1]
+
+          console.log("[v0] Calling extract-items API...")
+
+          const response = await fetch("/api/extract-items", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: base64 }),
+          })
+
+          if (!response.ok) {
+            const error = await response.json()
+            if (response.status === 404 || error.error?.includes("NOT_FOUND")) {
+              setMessageModal({
+                isOpen: true,
+                title: "Feature Unavailable",
+                message:
+                  "The clothing extraction feature requires the 'extract-items' Supabase Edge Function to be deployed. Please deploy the function and try again.",
+                type: "error",
+              })
+              return
+            }
+            throw new Error(error.error || "Failed to extract clothing items")
+          }
+
+          const data = await response.json()
+          console.log("[v0] Extracted items response:", data.message)
+
+          const images = data.images || []
+          const textOutput = data.textOutput || ""
+
+          if (images.length === 0) {
+            setMessageModal({
+              isOpen: true,
+              title: "No Items Found",
+              message: "No clothing items found in the image. Please try another photo.",
+              type: "error",
+            })
+            return
+          }
+
+          const itemMetadata = parseTextOutput(textOutput, images.length)
+          console.log("[v0] Parsed item metadata:", itemMetadata)
+
+          const items: ExtractedItem[] = images.map((imageBase64: string, i: number) => {
+            const metadata = itemMetadata[i] || { name: `Item ${i + 1}`, type: "top", description: "" }
+            return {
+              name: metadata.name,
+              type: metadata.type,
+              description: metadata.description || "",
+              imageBase64,
+            }
+          })
+
+          setExtractedItems(items)
+          setShowExtractedItemsDialog(true)
+        } catch (error: any) {
+          console.error("[v0] Error processing image:", error)
+          setMessageModal({
+            isOpen: true,
+            title: "Error",
+            message: error.message || "Failed to process image. Please try again.",
+            type: "error",
+          })
+        } finally {
+          setIsExtracting(false)
+        }
+      }
+
+      reader.readAsDataURL(file)
+    } catch (error: any) {
+      console.error("[v0] Error reading file:", error)
+      setMessageModal({
+        isOpen: true,
+        title: "Error",
+        message: "Failed to read image file. Please try again.",
+        type: "error",
+      })
+      setIsExtracting(false)
+    }
+
+    event.target.value = ""
+  }
+
+  const handleConfirmExtractedItems = async () => {
+    try {
+      setIsExtracting(true)
+
+      for (const item of extractedItems) {
+        try {
+          const { data: clothData, error: insertError } = await supabase
+            .from("clothes")
+            .insert({
+              name: item.name,
+              description: item.description || "",
+              type: item.type,
+              username: "nicoperez",
+              public: false,
+              selling: false,
+            })
+            .select()
+            .single()
+
+          if (insertError) throw insertError
+
+          if (item.imageBase64) {
+            const result = await uploadClothesImage(clothData.id, item.imageBase64)
+            if (!result.success) {
+              console.error("[v0] Error uploading image:", result.error)
+            }
+          }
+        } catch (itemError) {
+          console.error("[v0] Error saving item:", itemError)
+        }
+      }
+
+      await fetchClothes()
+      setShowExtractedItemsDialog(false)
+      setExtractedItems([])
+      setMessageModal({
+        isOpen: true,
+        title: "Success",
+        message: `Successfully added ${extractedItems.length} item(s) to your wardrobe!`,
+        type: "success",
+      })
+    } catch (error: any) {
+      console.error("[v0] Error saving items:", error)
+      setMessageModal({
+        isOpen: true,
+        title: "Error",
+        message: "Failed to save items. Please try again.",
+        type: "error",
+      })
+    } finally {
+      setIsExtracting(false)
+    }
+  }
+
+  const handleUpdateExtractedItem = (index: number, field: keyof ExtractedItem, value: string) => {
+    setExtractedItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)))
+  }
+
+  const handleRemoveExtractedItem = (index: number) => {
+    setExtractedItems((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const resizeImage = async (dataUrl: string, maxDimension = 1024): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        let { width, height } = img
+
+        if (width <= maxDimension && height <= maxDimension) {
+          resolve(dataUrl)
+          return
+        }
+
+        if (width > height) {
+          if (width > maxDimension) {
+            height = (height * maxDimension) / width
+            width = maxDimension
+          }
+        } else {
+          if (height > maxDimension) {
+            width = (width * maxDimension) / height
+            height = maxDimension
+          }
+        }
+
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext("2d")
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height)
+          resolve(canvas.toDataURL("image/jpeg", 0.85))
+        } else {
+          resolve(dataUrl)
+        }
+      }
+      img.onerror = () => resolve(dataUrl)
+      img.src = dataUrl
+    })
+  }
+
+  const parseTextOutput = (textOutput: string, imageCount: number) => {
+    const items = []
+
+    try {
+      const jsonMatch = textOutput.match(/\[[\s\S]*\]/)
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0])
+        return parsed.map((item: any) => ({
+          name: (item.name || item.item || "Unnamed Item").replace(/\*\*/g, "").trim(),
+          type: (item.type || "top").toLowerCase(),
+          description: item.description || "",
+        }))
+      }
+    } catch (e) {}
+
+    const lines = textOutput.split("\n").filter((line) => line.trim())
+    for (const line of lines) {
+      if (line.toLowerCase().includes("detected clothing") || line.toLowerCase().includes("here are")) {
+        continue
+      }
+
+      const nameMatch = line.match(/(?:\d+\.\s*)?([^(]+)/)
+      const typeMatch = line.match(/$$([^)]+)$$/)
+
+      if (nameMatch) {
+        const name = nameMatch[1]
+          .trim()
+          .replace(/\*\*/g, "")
+          .replace(/^\*\s*/, "")
+        if (name && name.length > 2) {
+          items.push({
+            name,
+            type: typeMatch ? typeMatch[1].toLowerCase() : "top",
+            description: "",
+          })
+        }
+      }
+    }
+
+    if (items.length === 0) {
+      for (let i = 0; i < imageCount; i++) {
+        items.push({
+          name: `Clothing Item ${i + 1}`,
+          type: "top",
+          description: "",
+        })
+      }
+    }
+
+    return items
   }
 
   const renderClothingItem = (item: ClothingItem) => (
@@ -506,6 +877,10 @@ export default function Wardrobe() {
                 <Share2 className="h-4 w-4 mr-2" />
                 Share
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDeleteItem(item.id)} className="text-red-600">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Item
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -542,10 +917,8 @@ export default function Wardrobe() {
             ...selectedItems.shoes,
             ...selectedItems.accessories,
           ]
-          const itemNames = allSelectedItems.map((item) => item.name).join(",")
-          router.push(
-            `/try-outfit?outfit=${encodeURIComponent("/images/outfit1.jpg")}&items=${encodeURIComponent(itemNames)}`,
-          )
+          const outfitImages = allSelectedItems.map((item) => item.image).join(",")
+          router.push(`/try-outfit?outfits=${encodeURIComponent(outfitImages)}`)
         }}
       >
         <Camera className="h-4 w-4 mr-2" />
@@ -598,8 +971,8 @@ export default function Wardrobe() {
           size="sm"
           className="absolute top-2 right-2 h-8 px-3 bg-white/90 hover:bg-white text-foreground shadow-md"
           onClick={() => {
-            const itemIds = outfit.items.map((item) => item.id).join(",")
-            router.push(`/try-outfit?outfit=${encodeURIComponent(outfit.image)}&items=${encodeURIComponent(itemIds)}`)
+            const outfitImages = outfit.items.map((item) => item.image).join(",")
+            router.push(`/try-outfit?outfits=${encodeURIComponent(outfitImages)}`)
           }}
         >
           <Camera className="h-3 w-3 mr-1" />
@@ -642,10 +1015,16 @@ export default function Wardrobe() {
                 className="pl-10 pr-4 py-2"
               />
             </div>
-            <Button size="sm" variant="outline" className="flex-shrink-0 bg-transparent">
+            <Button
+              size="sm"
+              className="flex-shrink-0"
+              onClick={() => addPhotoInputRef.current?.click()}
+              disabled={isExtracting}
+            >
               <Plus className="h-4 w-4 mr-2" />
-              Add Item
+              {isExtracting ? "Processing..." : "Add Photo"}
             </Button>
+            <input ref={addPhotoInputRef} type="file" accept="image/*" onChange={handleAddPhoto} className="hidden" />
           </div>
 
           <div className="flex space-x-4 justify-center overflow-x-auto pb-2">
@@ -757,30 +1136,137 @@ export default function Wardrobe() {
 
       {createOutfitMode && renderCreateOutfitMode()}
 
+      <Dialog open={confirmModal.isOpen} onOpenChange={(open) => setConfirmModal({ ...confirmModal, isOpen: open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{confirmModal.title}</DialogTitle>
+            <DialogDescription>{confirmModal.message}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                confirmModal.onConfirm()
+                setConfirmModal({ ...confirmModal, isOpen: false })
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={messageModal.isOpen} onOpenChange={(open) => setMessageModal({ ...messageModal, isOpen: open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{messageModal.title}</DialogTitle>
+            <DialogDescription>{messageModal.message}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setMessageModal({ ...messageModal, isOpen: false })}>OK</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Save Outfit</DialogTitle>
+            <DialogDescription>Give your outfit a name to save it to your collection.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label htmlFor="outfit-name" className="text-sm font-medium">
-                Outfit Name
-              </label>
-              <Input
-                id="outfit-name"
-                placeholder="e.g., Casual Friday, Date Night"
-                value={outfitName}
-                onChange={(e) => setOutfitName(e.target.value)}
-              />
-            </div>
+          <div className="py-4">
+            <Input
+              placeholder="Enter outfit name..."
+              value={outfitName}
+              onChange={(e) => setOutfitName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && outfitName.trim()) {
+                  handleSaveOutfit()
+                }
+              }}
+            />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSaveDialog(false)} disabled={isSaving}>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveOutfit} disabled={isSaving}>
+            <Button onClick={handleSaveOutfit} disabled={isSaving || !outfitName.trim()}>
               {isSaving ? "Saving..." : "Save Outfit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showExtractedItemsDialog} onOpenChange={setShowExtractedItemsDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review Extracted Items</DialogTitle>
+            <DialogDescription>
+              Review and edit the clothing items extracted from your photo. You can change names, types, or remove items
+              before adding them to your wardrobe.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {extractedItems.map((item, index) => (
+              <div key={index} className="border rounded-lg p-4 space-y-3">
+                <div className="flex gap-4">
+                  <img
+                    src={`data:image/png;base64,${item.imageBase64}`}
+                    alt={item.name}
+                    className="w-24 h-24 object-cover rounded-md border"
+                  />
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <label className="text-sm font-medium">Name</label>
+                      <Input
+                        value={item.name}
+                        onChange={(e) => handleUpdateExtractedItem(index, "name", e.target.value)}
+                        placeholder="Item name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Type</label>
+                      <select
+                        value={item.type}
+                        onChange={(e) => handleUpdateExtractedItem(index, "type", e.target.value)}
+                        className="w-full px-3 py-2 border rounded-md"
+                      >
+                        <option value="top">Top</option>
+                        <option value="bottom">Bottom</option>
+                        <option value="shoe">Shoe</option>
+                        <option value="accessories">Accessories</option>
+                      </select>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRemoveExtractedItem(index)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowExtractedItemsDialog(false)
+                setExtractedItems([])
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmExtractedItems} disabled={extractedItems.length === 0 || isExtracting}>
+              {isExtracting
+                ? "Adding..."
+                : `Add ${extractedItems.length} Item${extractedItems.length !== 1 ? "s" : ""} to Wardrobe`}
             </Button>
           </DialogFooter>
         </DialogContent>
