@@ -98,7 +98,7 @@ WearAndShare is a revolutionary mobile fashion app that allows users to:
 - **Frontend**: Next.js 15, React 19, TypeScript
 - **Styling**: Tailwind CSS
 - **Database**: Supabase
-- **AI/ML**: Custom AI models for clothing detection and virtual try-on
+- **AI/ML**: Nano Banana AI models for clothing detection and virtual try-on
 - **Mobile**: Progressive Web App (PWA) capabilities
 
 ### Available Scripts
@@ -117,10 +117,6 @@ This project is part of Picanthon 2025. For contributions or questions:
 - **Team**: Waven
 - **Event**: Picanthon 2025
 - **Focus**: AI-powered fashion technology
-
-## 📄 License
-
-This project is developed for Picanthon 2025 by Team Waven.
 
 ---
 
